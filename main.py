@@ -1,19 +1,17 @@
 import csv
-import time
-import random
+import time as tm
 import argparse
 
-
-def schedule_meetings(filename, interval=4, usernames=None):
+def find_best_times(filename, head_person, interval=4):
     with open(filename, "r") as file:
         reader = csv.reader(file)
         header = next(reader)
         availability = list(reader)
 
-    people = [person for person in header[1:] if not usernames or person in usernames]
+    people = [person for person in header[1:]]
     times = [row[0] for row in availability]
     parsed_times = [
-        time.strptime(time_string, "%A %I:%M:%S %p") for time_string in times
+        tm.strptime(time_str, "%A %I:%M:%S %p") for time_str in times
     ]
 
     availability_dict = {}
@@ -51,59 +49,35 @@ def schedule_meetings(filename, interval=4, usernames=None):
             if is_available:
                 availability_dict[parsed_times[time_idx]].append(person)
 
-    availability_dict = dict(
-        sorted(availability_dict.items(), key=lambda item: len(item[1]), reverse=True)
-    )
+    head_availability = {time: people for time, people in availability_dict.items() if head_person in people}
 
-    scheduled_people = []
-    scheduled_times = []
+    used_times = set()
+    meetings = []
 
-    scheduled_times.append(list(availability_dict.keys())[0])
-    for person in list(availability_dict.values())[0]:
-        scheduled_people.append(person)
+    for person in people:
+        if person == head_person:
+            continue
 
-    every_person_scheduled = False
+        suitable_times = [time for time, people in head_availability.items() if person in people and time not in used_times]
 
-    while not every_person_scheduled:
-        best_time_with_most_non_sched_people = 0
-        best_time_with_most_non_sched_people_idx = -1
-        for time_idx, (current_time, people) in enumerate(availability_dict.items()):
-            if current_time not in scheduled_times:
-                new_people = 0
-                for person in people:
-                    if person not in scheduled_people:
-                        new_people += 1
+        if suitable_times:
+            best_time = suitable_times[0]
+            meetings.append((best_time, person))
+            used_times.add(best_time)
+        else:
+            meetings.append(("No suitable time found for " + person, person))
+            
+    best_general_time = None
 
-                if new_people > best_time_with_most_non_sched_people:
-                    best_time_with_most_non_sched_people = new_people
-                    best_time_with_most_non_sched_people_idx = time_idx
-
-        if best_time_with_most_non_sched_people_idx == -1:
+    for time, people in availability_dict.items():
+        if len(people) == len(header) - 1 and time not in used_times:
+            best_general_time = time
             break
 
-        scheduled_times.append(
-            list(availability_dict.keys())[best_time_with_most_non_sched_people_idx]
-        )
-        for person in list(availability_dict.values())[
-            best_time_with_most_non_sched_people_idx
-        ]:
-            if person not in scheduled_people:
-                scheduled_people.append(person)
-
-        for person in people:
-            if person not in scheduled_people:
-                every_person_scheduled = False
-                break
-            every_person_scheduled = True
-
-    time_people = []
-    for sched_time in scheduled_times:
-        time_people.append((sched_time, availability_dict[sched_time]))
-
-    return time_people
+    return meetings, best_general_time
 
 
-def format_output(time_people_list):
+def format_output(meetings, general_time_struct):
     days = [
         "Monday",
         "Tuesday",
@@ -115,25 +89,38 @@ def format_output(time_people_list):
     ]
 
     formatted_list = []
-    for time_struct, people in time_people_list:
-        hour = time_struct.tm_hour % 12
+
+    for time_struct, person in meetings:
+        if isinstance(time_struct, str):  # No suitable time found
+            formatted_list.append(f"1-on-1 Meeting: {time_struct} with {person}")
+        else:
+            hour = time_struct.tm_hour % 12
+            hour = 12 if hour == 0 else hour
+            period = "AM" if time_struct.tm_hour < 12 else "PM"
+            day = days[time_struct.tm_wday]
+            formatted_time = f"{day}, {hour}:{str(time_struct.tm_min).zfill(2)} {period}"
+            formatted_list.append(f"1-on-1 Meeting Time: {formatted_time} with {person}")
+
+    if general_time_struct:
+        hour = general_time_struct.tm_hour % 12
         hour = 12 if hour == 0 else hour
-        period = "AM" if time_struct.tm_hour < 12 else "PM"
-
-        day = days[time_struct.tm_wday]
-
-        formatted_time = f"{day}, {hour}:{str(time_struct.tm_min).zfill(2)} {period}"
-        formatted_list.append((formatted_time, people))
+        period = "AM" if general_time_struct.tm_hour < 12 else "PM"
+        day = days[general_time_struct.tm_wday]
+        formatted_time = f"{day}, {hour}:{str(general_time_struct.tm_min).zfill(2)} {period}"
+        formatted_list.append(f"Best General Meeting Time: {formatted_time}")
 
     return formatted_list
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Schedule meetings based on availability."
+        description="Find the best times for meetings based on availability."
     )
     parser.add_argument(
         "filename", type=str, help="CSV file containing availability data."
+    )
+    parser.add_argument(
+        "head_person", type=str, help="The head person for 1-1 meetings."
     )
     parser.add_argument(
         "--interval",
@@ -141,15 +128,13 @@ if __name__ == "__main__":
         default=4,
         help="Number of consecutive 15-minute intervals.",
     )
-    parser.add_argument(
-        "--usernames", nargs="*", help="List of usernames to consider for scheduling."
-    )
 
     args = parser.parse_args()
 
-    # Pass usernames to the schedule_meetings function
-    time_people = schedule_meetings(args.filename, args.interval, args.usernames)
+    meetings, best_general_time = find_best_times(
+        args.filename, args.head_person, args.interval
+    )
 
-    formatted_list = format_output(time_people)
-    for time, people in formatted_list:
-        print(f"{time}: {people}")
+    formatted_list = format_output(meetings, best_general_time)
+    for line in formatted_list:
+        print(line)
