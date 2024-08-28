@@ -1,5 +1,9 @@
 # When2Meet Optimal Meetups
 
+## More
+
+In addition to the original one, this one also find best 1-to-1 meeting spots given a one reference person. 
+
 ## Description
 
 When2Meet Optimal Meetup is a Python script that uses a CSV generated from When2Meet to determine the best meeting times for a group. It schedules meetings based on the number of consecutive 15-minute intervals where the most people ar available resulting in a list of most optimal weekly meeting times to get everyone on the When2Meet.
@@ -11,7 +15,7 @@ When2Meet Optimal Meetup is a Python script that uses a CSV generated from When2
 ## Usage
 Interval specifies the number of 15 minute periods. Four is one hour. Default interval is `4`.
 
-```python main.py when2meet.csv --interval 4```
+```python main.py when2meet.csv "Utku"```
 
 ## CSV from When2Meet
 Paste this script into the Chrome console tab on the When2Meet page.
